@@ -1,0 +1,928 @@
+---
+title: "A Longitudinal Approach to Loss Reserving"
+subtitle: ST 537
+author: Brian A. Fannin ACAS
+bibliography: references.bib
+format:
+  docx:
+    number-sections: true
+    reference-doc: word_template.docx
+---
+
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
+
+```{r include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  include = FALSE
+)
+```
+
+
+# Introduction
+
+## What is loss reserving?
+
+An insurance company takes on a financial obligation to a policyholder as soon as the policy is sold. However, although the premium is known with certainty, the amount owed for claims is not. Even after a claim occurs, the insurance company is still uncertain of the claim's ultimate cost. The amount associated with repairing a damaged car, the medical costs for someone injured in an accident, or the expenses to repair a damaged roof take time to become fully established. In some cases, this process may take years. For example, a plaintiff may seek recovery for a tort claim which will work its way through the civil courts and then --- in all likelihood --- be appealed after a jury has rendered a verdict. The resolution of asbestos cases --- which took decades and is still not fully resolved --- is an example. Finally, the existence of a claim may not be known for some period of time after a policy has expired. Again, asbestos liability provides a good case in point. Claimants who had been exposed to asbestos were unaware of the negative health affects for years. However, under prevailing civil liability law and the provisions of the insurance contract, they were still able to seek financial recovery and insurers were obligated to respond[^claims_made].
+
+[^claims_made]: The policy requirement that an insurance contract respond many years after policy expiry lead to the development of the "claims-made" coverage trigger in the late 1970s. In these contracts, the policy covers only those claims which are made during the policy period.
+
+Actuaries use statistical methods to estimate the amount of future payments to be made. This is typically done in alignment with a financial reporting period such as a year or quarter. The assignment of claims data to a period can take several forms. In one case, all claims associated with policies issued during a specific period are aggregated. In another, all claims which occurred --- irrespective of whether they are known to the policyholder or the insurance company --- are aggregated. For example, all claims which occur between January 1, 2000 and December 31, 2000 would be combined as one observational unit. This is known as an "accident year" or sometimes "occurrence year". The period from January through December just described would be referred to as "accident year 2000". 
+
+Accident years are evaluated at regular intervals, typically annually or quarterly and the evolution of financial amounts is commonly referred to as "loss development". The intervals are referred to as "development periods", or "lags". The date when figures are compiled is referred to as the "evaluation date". The period of time between the beginning of a collection of claims and the evaluation date is referred to as the "development age", or simply "age. For example, accident year 2000 evaluated at December 31, 2000 would constitute "development age one year". The same period evaluated at December 31, 2001 would be "development age two years" and so on.
+
+Several different amounts are recorded and analyzed by the actuary. Naturally, amounts paid to claimants or for expenses to settle a claim are recorded. In addition, an accident year will sum the estimates made by the claims adjuster for all known claims is recorded. Each adjuster makes an estimate of future costs for each case assigned to them. Accordingly, the sum of all such estimates is known as the "case reserve". Note that although this amount may increase as facts about the case become known, it is expected to decrease to zero as the case is settled and closed. The sum of paid amounts and case reserve is known as the "incurred loss" and sometimes the "reported loss". It constitutes all that is known about the claims associated with a particular time period.
+
+Although insurance companies do not know what funds are owed to policyholders at the inception of the policy, they do know what premium has been charged. The premium is an estimate of the average funds needed to cover losses and expenses. Because the largest share of expenses is proportionate to premium, the premium has a nearly direct linear relationship to the estimated loss. Given that, a linear function of premium is often used as an estimate of loss when case reserve and payment data has yet to emerge.
+
+## Research objective
+
+In this paper, we will explore the use of longitudinal analysis to estimate loss payments for workers compensation insurance. We will examine several potential covariates: development lag, prior cumulative paid loss, and net earned premium. Additionally, we will explore several covariance structures and examine the use of random effects which are tied to insurance company. Because each insurance company has its own portfolio of insured and its own claims department we may expect both the character of the claims and the settlement of claims to be specific an insurer. However, because each insurance company is subject to similar regulation[^similar_regulation], we can also expect some similarities in behavior.
+
+[^similar_regulation]: In the United States, each state is responsible for the regulation of insurance. Insofar as insurance companies concentrate in particular states or geographic regions they may experience regulatory regimes that resemble the whole more or less.
+
+```{r results='hide', message = FALSE}
+library(tidyverse)
+```
+
+## The data
+
+Insurance companies in the United States are required to report financial statements to the National Association of Insurance Commissioners on an annual basis in a standard format. The report contains ten accident years with an evaluation date as of the end of the calendar year. Therefore, each accident year is at a different age of development. The most recent accident year will be age one and the oldest will be at development age ten. 
+
+Glenn Meyers and Peng Shi collated ten years of financial statements to generate a $10 x 10$ matrix of financial amounts, giving ten development ages for ten accident years. Values exist for each of 132 companies, making this a balanced design. The data is publicly available and has been captured in the `raw` R package. For this paper, we will augment the original data by noting the prior amounts for cumulative paid and case reserve and also by calculating incremental values for the paid data. A sample of the data is shown in @tbl-sched-p-example.
+
+In the data, the columns with a suffix of `_ep` refer to "earned premium" elements. The term "earned" means that it has been adjusted so that it is on the same accounting basis as the related losses - in this case accident year[^premium_earning]. Note that there are three different amounts shown. This reflects the usage of reinsurance: insurance bought by insurance companies. The `direct_ep` is the amount collected from policyholders, `ceded_ep` is the amount paid to reinsurers and `net_ep` is the difference between the two. Because the loss amounts reflect payments made by reinsurers, the `net_ep` column is the one which is most compatible with the observed losses.
+
+[^premium_earning]: A standard treatment is for premium to be earned linearly over the policy period, e.g. a policy effective July 1, 2000 for \$10,000 will have earned \$5,000 in accident year 2000 and \$5,000 in accident year 2001. There are exceptions to this, notably warranty insurance.
+
+```{r }
+library(raw)
+source('wrangle.R')
+
+tbl_wkcomp <- raw::wkcomp |> 
+  group_by(Company) |> 
+  wrangle_triangle(1997)
+```
+
+```{r}
+#| label: tbl-sched-p-example
+#| tbl-cap: "A sample of the data being studied"
+tbl_wkcomp |> 
+  slice_sample(n = 5) |> 
+  select(Company = company, `Accident Year` = accident_year,
+         Lag = lag, `Net Earned Premium` = net_ep, 
+         `Incremental Paid` = incremental_paid,
+         `Case Reserve` = case) |> 
+  knitr::kable()
+```
+
+## Exploratory data analysis
+
+```{r}
+#| label: fig-inc-paid-histogram
+#| fig-cap: "A histogram of incremental paid losses, which exhibits skew"
+tbl_wkcomp |> 
+  ggplot(aes(incremental_paid)) + 
+  geom_histogram() + 
+  labs(x = "Incremental Paid Loss") +
+  theme_minimal()
+```
+
+```{r}
+#| label: fig-inc-paid-histogram-logged
+#| fig-cap: "A histogram of incremental paid losses on a log scale, which shows a probability mass at zero"
+tbl_wkcomp |> 
+  ggplot(aes(incremental_paid)) + 
+  geom_histogram() + 
+  labs(x = "Incremental Paid Loss") +
+  scale_x_log10() +
+  theme_minimal()
+```
+
+Before constructing models, we will first examine some exploratory and summary plots. Taking a look at the observed values in @fig-inc-paid-histogram and @fig-inc-paid-histogram-logged, we note two things. First, the response is highly skewed. Second, there is a probability mass at zero. The latter point will make it particularly challenging to fit using linear methods. 
+
+```{r}
+tbl_summary_lag <- tbl_wkcomp |> 
+  group_by(lag) |> 
+  summarise(
+    paid_mean = mean(incremental_paid, na.rm = TRUE),
+    paid_sd = sd(incremental_paid, na.rm = TRUE),
+    paid_cv = paid_sd / paid_mean
+  )
+```
+
+```{r}
+#| label: fig-mean-paid-by-lag
+#| fig-cap: 'Mean incremental paid loss by development lag'
+
+tbl_summary_lag |> 
+  ggplot(aes(lag, paid_mean)) + 
+  geom_point() + 
+  geom_line() + 
+  scale_x_continuous(breaks = 1:10) + 
+  labs(
+    x = 'Development Lag',
+    y = 'Mean incremental paid loss'
+  ) + 
+  theme_minimal()
+```
+
+```{r}
+#| label: fig-sd-paid-by-lag
+#| fig-cap: 'Standard deviation of incremental paid loss by development lag'
+
+tbl_summary_lag |> 
+  ggplot(aes(lag, paid_sd)) + 
+  geom_point() + 
+  geom_line() + 
+  scale_x_continuous(breaks = 1:10) + 
+  labs(
+    x = 'Development Lag',
+    y = 'Standard deviation of incremental paid loss'
+  ) + 
+  theme_minimal()
+```
+
+We next turn to the mean and standard deviation of incremental payments, grouped by lag. In @fig-mean-paid-by-lag, we note that the average payment amount rises between lags 1 and 2, but then declines. This pattern is also observed in the standard deviation shown in @fig-sd-paid-by-lag.
+
+```{r}
+tbl_wkcomp_prior <- tbl_wkcomp |> 
+  filter(lag != 1)
+```
+
+
+```{r }
+#| label: fig-inc-by-prior
+#| fig-cap: 'Incremental paid losses against prior cumulative losses'
+tbl_wkcomp_prior |> 
+  ggplot(aes(prior_cumulative_paid, incremental_paid)) + 
+  geom_point() + 
+  labs(
+    x = 'Prior cumulative paid loss',
+    y = 'Incremental paid loss'
+  ) + 
+  theme_minimal()
+```
+
+```{r}
+#| label: fig-inc-by-prior-facet
+#| fig-cap: 'Incremental paid losses against prior cumulative losses, by lag'
+tbl_wkcomp_prior |> 
+  ggplot(aes(prior_cumulative_paid, incremental_paid)) + 
+  geom_point() + 
+  facet_wrap(~ lag, scales = 'free') +
+    labs(
+    x = 'Prior cumulative paid loss',
+    y = 'Incremental paid loss'
+  ) + 
+  theme_minimal()
+```
+
+In actuarial practice, it is common to model payments on the prior cumulative value of loss. However, this is generally done with a distinct model for each lag [@friedland]. @fig-inc-by-prior and @fig-inc-by-prior-facet offer a visual justification for this. In @fig-inc-by-prior, we note a cluster of points near the origin, consistent with the probability mass seen in @fig-inc-paid-histogram-logged. Although there is a very rough sense of linearity, there is no clear model suggested. When we separate the data by lag as in @fig-inc-by-prior-facet, we see a much stronger linear pattern emerge.
+
+```{r}
+tbl_wkcomp_ep <- tbl_wkcomp
+```
+
+```{r}
+tbl_wkcomp_ep |> 
+  ggplot(aes(net_ep, incremental_paid)) + 
+  geom_point() +
+  labs(
+    x = 'Net earned premium',
+    y = 'Incremental paid loss'
+  ) + 
+  theme_minimal()
+```
+
+```{r}
+tbl_wkcomp_ep |> 
+  ggplot(aes(net_ep, incremental_paid)) + 
+  geom_point() + 
+  facet_wrap(~ lag, scales = 'free') +
+  labs(
+    x = 'Net earned premium',
+    y = 'Incremental paid loss'
+  ) + 
+  theme_minimal()
+```
+
+# Methods
+
+We will fit several different models for the incremental payments. In all of the formulas which follow, $Y_{ij}$ denotes incremental paid loss from company $i$ at development time $j$.
+
+## Models w/ lag
+
+As noted above, @fig-mean-paid-by-lag suggests a different treatment for lags greater than 2. Accordingly, we form the variable $\delta_{ij}$ to differentiate between the two time periods.
+
+$$
+\begin{aligned}
+Y_{ij} &= \beta_0 + \beta_1 * \delta_{ij} * lag_{ij} 
+    + \beta_2\left(1 - \delta_{ij}  \right) lag_{ij} + \epsilon_{ij} \\
+\delta_{ij} &= \begin{cases} 
+  1 & \text{if } lag_{ij} \le 2 \\
+  0 & \text{if } lag_{ij} > 2
+\end{cases} \\
+\epsilon_{ij} &\sim N\left(0, \pmb{\Sigma}_i(\omega)\right)
+\end{aligned}
+$$ {#eq-model-w-lag}
+
+
+```{r }
+tbl_wkcomp_lag <- tbl_wkcomp |> 
+  mutate(
+    delta = ifelse(lag <= 2, 1, 0),
+    lag_le2 = delta * lag,
+    lag_gt2 = (1 - delta) * lag,
+    delta_ind = ifelse(delta, '_le2', '_gt2')
+  )
+```
+
+The first model we fit will use @eq-model-w-lag, with the assumption that $\epsilon_{ij}$ follows a compound symmetric covariance structure where variances are different from one company to another. That is:
+
+$$
+\pmb{\Sigma}_i(\omega) = \pmb{D} \begin{bmatrix} 
+1 & \rho & \ldots & \rho \\
+  &  1 & \ldots & \rho \\
+  & & \ddots & \vdots \\
+  & &        & 1
+\end{bmatrix}
+\pmb{D}
+$$
+
+The vector $\pmb{D}$ will have an entry for each company.
+
+```{r}
+library(nlme)
+
+fit_lag_one <- gls(
+  incremental_paid ~ 0 + delta_ind + lag_le2 + lag_gt2,
+  correlation = corCompSymm(form = ~ 1 | company),
+  data = tbl_wkcomp_lag,
+)
+```
+
+
+```{r}
+library(clubSandwich)
+
+beta_hat <- fit_lag_one$coefficients
+degrees_of_freedom <- nrow(tbl_wkcomp) - length(beta_hat)
+alpha <- 0.05
+t_crit <- qt(1 - alpha / 2, degrees_of_freedom)
+
+standard_error <- fit_lag_one |> 
+  vcovCR(type = "CR0") |> 
+  diag() |> 
+  sqrt()
+
+tbl_beta_hat_fit_lag_one <- tibble(
+  Coefficient = names(beta_hat),
+  Estimate = beta_hat,
+  Lower = beta_hat - t_crit * standard_error,
+  Upper = beta_hat + t_crit * standard_error
+)
+```
+
+```{r}
+#| label: tbl-beta-hat-fit-lag-one
+#| tbl-cap: Estimated coefficients using lag as a predictor with variances different by company
+tbl_beta_hat_fit_lag_one |> 
+  knitr::kable(digits = 2)
+```
+
+Our parameter estimates are shown in @tbl-beta-hat-fit-lag-one, which includes a 95% confidence interval around the estimate. All appear to be significant, though the range in value for the slope associated with lags less than two is wider than we might like. Conforming with @fig-mean-paid-by-lag, the signs of the slopes appear reasonable.
+
+Our second model assumes that the variance changes by development lag. This is motivated by @fig-sd-paid-by-lag.
+
+```{r }
+#| cache: true
+fit_lag_two <- gls(
+  incremental_paid ~ 0 + delta_ind + lag_le2 + lag_gt2,
+  correlation = corCompSymm(form = ~ 1 | company),
+  weights = varIdent(form = ~ 1 | lag),
+  data = tbl_wkcomp_lag
+)
+```
+
+```{r}
+beta_hat <- fit_lag_two$coefficients
+degrees_of_freedom <- nrow(tbl_wkcomp) - length(beta_hat)
+alpha <- 0.05
+t_crit <- qt(1 - alpha / 2, degrees_of_freedom)
+
+standard_error <- fit_lag_two |> 
+  vcovCR(type = "CR0") |> 
+  diag() |> 
+  sqrt()
+
+tbl_beta_hat_fit_lag_two <- tibble(
+  Coefficient = names(beta_hat),
+  Estimate = beta_hat,
+  Lower = beta_hat - t_crit * standard_error,
+  Upper = beta_hat + t_crit * standard_error
+)
+```
+
+```{r}
+#| label: tbl-beta-hat-fit-lag-two
+#| tbl-cap: Estimated coefficients using lag as a predictor with variances different by company and weighted by lag
+tbl_beta_hat_fit_lag_two |> 
+  knitr::kable(digits = 2)
+```
+
+Examining @tbl-beta-hat-fit-lag-two, we see that the model gives a negative value for the slope for lags <= 2. In addition, the confidence intervals for the coefficient estimates associated with lags <= 2 include zero, indicating that they we cannot readily conclude that their values are not zero.
+
+```{r }
+fit_lag_three <- lme(
+  fixed = incremental_paid ~ 0 + delta_ind + lag_le2 + lag_gt2,
+  random = list(company = pdBlocked(
+    list(~ 0 + lag_le2, ~ 0 + lag_gt2)
+  )),
+  data = tbl_wkcomp_lag
+)
+```
+
+```{r}
+standard_error <- fit_lag_three$varFix |> 
+  diag() |> 
+  sqrt()
+
+degrees_of_freedom <- fit_lag_three$fixDF$X
+alpha <- 0.05
+crit <- qt(1 - alpha / 2, df = degrees_of_freedom)
+
+beta_hat <- fixed.effects(fit_lag_three)
+
+tbl_beta_hat_fit_lag_three <- tibble(
+  coefficient = names(beta_hat),
+  estimate = beta_hat,
+  degrees_of_freedom = degrees_of_freedom,
+  standard_error = standard_error,
+  lower = beta_hat - crit * standard_error,
+  upper = beta_hat + crit * standard_error
+)
+```
+
+```{r}
+#| label: tbl-beta-hat-fit-lag-three
+#| tbl-cap: Estimated coefficients using lag as a predictor with random effects for the slopes
+tbl_beta_hat_fit_lag_three |> 
+  knitr::kable(digits = 2)
+```
+
+We now examine a random effects model, using insurance company as the grouping element for the random effects. @tbl-beta-hat-fit-lag-three shows estimates for the fixed effects. The slope for lag <= 2 has an estimated standard error nearly equal to the coefficient itself, indicating this parameter is likely not significant.
+
+```{r}
+fit_lag_four <- lme(
+  fixed = incremental_paid ~ 0 + delta_ind + lag_le2 + lag_gt2,
+  random = list(company = pdBlocked(
+    list(~ 0 + delta_ind, ~ 0 + lag_le2, ~ 0 + lag_gt2)
+  )),
+  data = tbl_wkcomp_lag
+)
+```
+
+```{r}
+standard_error <- fit_lag_four$varFix |> 
+  diag() |> 
+  sqrt()
+
+degrees_of_freedom <- fit_lag_four$fixDF$X
+alpha <- 0.05
+crit <- qt(1 - alpha / 2, df = degrees_of_freedom)
+
+beta_hat <- fixed.effects(fit_lag_four)
+
+tbl_beta_hat_fit_lag_four <- tibble(
+  Coefficient = names(beta_hat),
+  Estimate = beta_hat,
+  `Degrees of Freedom` = degrees_of_freedom,
+  `Standard Error` = standard_error,
+  Lower = beta_hat - crit * standard_error,
+  Upper = beta_hat + crit * standard_error
+)
+```
+
+```{r}
+#| label: tbl-beta-hat-fit-lag-four
+#| tbl-cap: Estimated coefficients using lag as a predictor with random effects for the slopes and intercept
+tbl_beta_hat_fit_lag_four |> 
+  knitr::kable(digits = 2)
+```
+
+Finally, we estimate a fixed effects model where both the intercept and the slope have random effects by company. @tbl-beta-hat-fit-lag-four shows that this helps resolve the issue with significance of the slope term for lags <- 2.
+
+```{r}
+tbl_aic_lag <- tibble(
+  model = paste0('Lag model ', c('one', 'two', 'three', 'four')),
+  description = c(
+    'GLS compound symmetric',
+    'GLS unequal variance',
+    'LMM w/random slope',
+    'LMM w/random slope and intercept'
+  ),
+  aic = map_dbl(
+    list(fit_lag_one, fit_lag_two, fit_lag_three, fit_lag_four),
+    AIC
+  )
+)
+```
+
+```{r}
+#| label: tbl-aic-lag
+#| tbl-cap: AIC for models based on development lag
+
+tbl_aic_lag |> 
+  knitr::kable(format.args = list(big.mark = ",", nsmall = 0))
+```
+
+```{r}
+tbl_wkcomp_lag <- tbl_wkcomp_lag |> 
+  mutate(
+    predict_lag = predict(fit_lag_two),
+    residual_lag = incremental_paid - predict_lag
+  )
+```
+
+Examining @tbl-aic-lag, we see that the GLS fit with unequal variance had the lowest observed AIC. However, we reject this model for two reasons. One, the parameters do not align with our observations of the data. The signs of the slopes are reversed from our exploratory data analysis which suggests that the weighted fit is overly influenced by some extreme observations. Two, the coefficients for lags less than 2 are not significant.
+
+## Models using prior cumulative
+
+The use of cumulative paid loss at the prior evaluation date is a well-established technique in the actuarial profession. In general, the observed quantity being modeled is cumulative. However, see [@halliwell] for compelling reasons to favor modeling the incremental change between evaluation dates. In general, an intercept is not used. See [@murphy] for an example of a model which uses an intercept. 
+
+We will express this model as in @eq-prior-one where $X_{ij}$ denotes cumulative paid losses. In @eq-prior-one, note that the cumulative losses from the prior period are being used. This form means that we cannot make an estimate for lag 1. In actuarial practice this is not a concern as this value is known when financial statements are being prepared.
+
+$$
+\begin{aligned}
+Y_{ij} &= \beta_0 + \beta_1 * X_{i, j-1} + \epsilon_{ij} \\
+\end{aligned}
+$$ {#eq-prior-one}
+
+Our first example will use an intercept and make no distinction by lag. This is analogous to the first model using lag as a predictor.
+
+```{r}
+fit_prior_one <- gls(
+  incremental_paid ~ 1 + prior_cumulative_paid,
+  data = tbl_wkcomp_prior,
+  correlation = corCompSymm(form = ~ 1 | company)
+)
+```
+
+```{r }
+beta_hat <- fit_prior_one$coefficients
+degrees_of_freedom <- nrow(tbl_wkcomp) - length(beta_hat)
+
+standard_error <- fit_prior_one |> 
+  vcovCR(type = "CR0") |> 
+  diag() |> 
+  sqrt()
+
+tbl_beta_hat_fit_prior_one <- tibble(
+  Coefficient = names(beta_hat),
+  Estimate = beta_hat,
+  Lower = beta_hat - t_crit * standard_error,
+  Upper = beta_hat + t_crit * standard_error
+)
+```
+
+```{r}
+#| label: tbl-beta-hat-fit-prior-one
+#| tbl-cap: Estimated coefficients using prior cumulative as a predictor with variances different by company
+tbl_beta_hat_fit_prior_one |> 
+  knitr::kable(digits = 2)
+```
+
+@tbl-beta-hat-fit-prior-one shows that the intercept and $\beta_1$ are both significant. The negative slope results because later lags will tend to have smaller incrementals. Yet the prior cumulative always increases. We may control for this by including the lag in our model.
+
+As suggested by @fig-inc-by-prior-facet, we will explore a model which uses the lag as an interaction term. This is effectively the same as having a different slope for each lag.
+
+$$
+\begin{aligned}
+Y_{ij} &= \beta_0 + \beta_1 \delta_1 X{i, j-1} + \ldots + \beta_9 \delta_9 X_{i, j-1} + \epsilon_{ij} \\
+\delta_{k} &= \begin{cases} 
+  1 & \text{if }  j - 1 = k \\
+  0 & \text{if } j - 1  \ne k
+\end{cases}
+\end{aligned}
+$$ {#eq-prior-lag-interaction}
+
+```{r}
+fit_prior_two <- gls(
+  incremental_paid ~ 1 + prior_cumulative_paid:lag_factor,
+  data = tbl_wkcomp_prior,
+  correlation = corCompSymm(form = ~ 1 | company)
+)
+```
+
+```{r }
+beta_hat <- fit_prior_two$coefficients
+degrees_of_freedom <- nrow(tbl_wkcomp) - length(beta_hat)
+
+standard_error <- fit_prior_two$varBeta |> 
+  diag() |> 
+  sqrt()
+
+tbl_beta_hat_fit_prior_two <- tibble(
+  Coefficient = names(beta_hat),
+  Estimate = beta_hat,
+  Lower = beta_hat - t_crit * standard_error,
+  Upper = beta_hat + t_crit * standard_error
+)
+```
+
+```{r}
+#| label: tbl-beta-hat-fit_prior_two
+#| tbl-cap: Estimated coefficients using prior cumulative and lag
+tbl_beta_hat_fit_prior_two |> 
+  knitr::kable(digits = 2)
+```
+
+Now all of the $\beta$ terms are positive and the intercept is no longer significant. 
+
+```{r}
+fit_prior_three <- lme(
+  fixed = incremental_paid ~ 1 + prior_cumulative_paid:lag_factor,
+  random = ~ 1 | company,
+  data = tbl_wkcomp_prior
+)
+```
+
+```{r}
+beta_hat <- fixed.effects(fit_prior_three)
+
+standard_error <- fit_prior_three$varFix |> 
+  diag() |> 
+  sqrt()
+
+degrees_of_freedom <- fit_prior_three$fixDF$X
+crit <- qt(1 - alpha / 2, df = degrees_of_freedom)
+
+tbl_beta_hat_fit_prior_three <- tibble(
+  Coefficient = names(beta_hat),
+  Estimate = beta_hat,
+  `Degrees of Freedom` = degrees_of_freedom,
+  `Standard Error` = standard_error,
+  Lower = beta_hat - crit * standard_error,
+  Upper = beta_hat + crit * standard_error
+)
+```
+
+```{r}
+#| label: tbl-beta-hat-fit_prior_three
+#| tbl-cap: Estimated coefficients using prior cumulative and lag with a random effect intercept by company
+tbl_beta_hat_fit_prior_three |> 
+  knitr::kable(digits = 2)
+```
+
+Having seen that the inclusion of company as a random effect may improve the fit, we will construct the same model here, beginning with a random effect by company.
+
+An attempt was made to fit random effects for the slopes, however the model did not converge[^rstudio_crashed]. Theorizing that this had something to do with a general variance structure for the random effects, we switched to a block design wherein each lag had its own assumed variance for random effects. This is very similar to assuming 9 independent models, one for each lag. (Recall that lag one cannot be estimated.) Although such an assumption may seem extreme, it is a common approach. [Again, see @friedland]
+
+[^rstudio_crashed]: Actually, RStudio crashed.
+
+$$
+\begin{aligned}
+\pmb{b_i} \sim N \begin{bmatrix}
+0, \pmb{D} = \begin{pmatrix}
+D_{11} & 0 & 0 & \ldots & 0 \\
+& D_{22} & 0 & \ldots & 0 \\
+&  & \ddots & &  \vdots \\
+& & &  & D_{99}
+\end{pmatrix}
+\end{bmatrix}
+\end{aligned}
+$$
+
+```{r}
+mat_int <- model.matrix(
+  incremental_paid ~ 0 + prior_cumulative_paid:lag_factor,
+  data = tbl_wkcomp_prior
+)
+
+mat_int <- mat_int[, -1]
+
+colnames(mat_int) <- paste0('prior_', 2:10)
+
+tbl_wkcomp_prior <- cbind(
+  tbl_wkcomp_prior, mat_int
+)
+```
+
+```{r}
+formula_prior <- paste(
+  'incremental_paid ~ 0 +',
+  paste0('prior_', 2:10, collapse = ' + ')
+) |> 
+  as.formula()
+
+fit_prior_four <- lme(
+  fixed = formula_prior,
+  random = list(company = pdBlocked(list(
+    ~ 0 + prior_2, 
+    ~ 0 + prior_3, 
+    ~ 0 + prior_4, 
+    ~ 0 + prior_5, 
+    ~ 0 + prior_6, 
+    ~ 0 + prior_7, 
+    ~ 0 + prior_8, 
+    ~ 0 + prior_9, 
+    ~ 0 + prior_10
+    )) 
+  ),
+  data = tbl_wkcomp_prior
+)
+```
+
+```{r}
+beta_hat <- fixed.effects(fit_prior_four)
+
+standard_error <- fit_prior_four$varFix |> 
+  diag() |> 
+  sqrt()
+
+degrees_of_freedom <- fit_prior_four$fixDF$X
+crit <- qt(1 - alpha / 2, df = degrees_of_freedom)
+
+tbl_beta_hat_fit_prior_four <- tibble(
+  Coefficient = names(beta_hat),
+  Estimate = beta_hat,
+  `Degrees of Freedom` = degrees_of_freedom,
+  `Standard Error` = standard_error,
+  Lower = beta_hat - crit * standard_error,
+  Upper = beta_hat + crit * standard_error
+)
+```
+
+```{r}
+#| label: tbl-beta-hat-fit_prior_four
+#| tbl-cap: Estimated coefficients using prior cumulative and lag with a random effect intercept by company
+tbl_beta_hat_fit_prior_four |> 
+  knitr::kable(digits = 2)
+```
+
+The coefficients appear reasonable, that is, they are positive and decrease by lag. Notably, none of the confidence intervals include zero, leading us to presume that they are significant.
+
+```{r}
+tbl_aic_prior <- tibble(
+    model = paste0('Prior model ', c('one', 'two', 'three', 'four')),
+    description = c(
+      'GLS',
+      'GLS w/lag interaction',
+      'LMM w/random intercept',
+      'LMM w/random slope'
+    ),
+    aic = map_dbl(
+      list(fit_prior_one, fit_prior_two, fit_prior_three, fit_prior_four),
+      AIC
+    )
+  )
+```
+
+```{r}
+#| label: tbl-aic-prior
+#| tbl-cap: AIC for models based on prior cumulative paid
+tbl_aic_prior |> 
+  knitr::kable(format.args = list(big.mark = ",", nsmall = 0))
+```
+
+As shown in @tbl-aic-prior, the final model with random effects for slope has the lowest AIC.
+
+```{r}
+#| label: fig-beta-prior-four
+#| fig-cap: 'Estimate and confidence interval of beta estimates for prior model four'
+tbl_beta_hat_fit_prior_four |> 
+  mutate(
+    Coefficient = Coefficient |> fct_relevel('prior_10', after = Inf)
+  ) |> 
+  ggplot(aes(Coefficient)) + 
+  geom_point(aes(y = Estimate)) + 
+  geom_errorbar(aes(ymin = Lower, ymax = Upper))
+```
+
+```{r}
+#| label: fig-beta-prior-four-lag-9-10
+#| fig-cap: 'Estimate and confidence interval of beta estimates of lags 6 through 10 for prior model four'
+tbl_beta_hat_fit_prior_four |> 
+  filter(Coefficient %in% paste0('prior_', c(6:10))) |> 
+  mutate(
+    Coefficient = Coefficient |> fct_relevel('prior_10', after = Inf)
+  ) |> 
+  ggplot(aes(Coefficient)) + 
+  geom_point(aes(y = Estimate)) + 
+  geom_errorbar(aes(ymin = Lower, ymax = Upper)) +
+  theme_minimal()
+```
+
+
+```{r}
+L_8_9 <- c(0, 0, 0, 0, 0, 0, 1, -1, 0)
+L_9_10 <- c(0, 0, 0, 0, 0, 0, 0, 1, -1) 
+```
+
+It is interesting to observe the confidence intervals around the fixed effect coefficients for model four. @fig-beta-prior-four and @fig-beta-prior-four-lag-9-10 shows the estimates and 95% confidence intervals. Looking particularly at @fig-beta-prior-four-lag-9-10, we may wonder whether those coefficients are truly different. Using contrasts of $L_1 = \left[0, 0, 0, 0, 0, 0, 1, -1, 0 \right]$ and $L_2 = \left[0, 0, 0, 0, 0, 0, 0, 1, -1 \right]$, we perform tests to assess whether $\pmb{L}\beta = 0$.
+
+For testing $H_0: \beta_8 = \beta_9$, we find support to reject the null.
+
+```{r}
+anova.lme(fit_prior_four, L = L_8_9, adjustSigma = TRUE)
+```
+
+And we find the same for testing $H_0: \beta_9 = \beta_{10}$.
+
+```{r}
+anova.lme(fit_prior_four, L = L_9_10, adjustSigma = TRUE)
+```
+
+## Models using earned premium
+
+We conclude our modeling with a look at one model using net earned premium as a predictor. Such a model was first suggested in a paper by @stanard.
+
+As with modeling against the prior cumulative loss, we will assume that the random effects are independent. Note that --- in contrast to the use or prior cumulative --- we are able to estimate values for lag 1.
+
+$$
+\begin{aligned}
+Y_{ij} &= \beta_0 + \beta_1 * X_{ij} + b_{i1} + b_{i2} + \ldots + b_{i10} + \epsilon_{ij} \\
+\pmb{b_i} &\sim N \begin{bmatrix}
+0, \pmb{D} = \begin{pmatrix}
+D_{11} & 0 & 0 & \ldots & 0 \\
+& D_{22} & 0 & \ldots & 0 \\
+&  & \ddots & &  \vdots \\
+& & &  & D_{10,10}
+\end{pmatrix}
+\end{bmatrix}
+\end{aligned}
+$$
+
+```{r}
+mat_int <- model.matrix(
+  incremental_paid ~ 0 + net_ep:lag_factor,
+  data = tbl_wkcomp_ep
+)
+
+colnames(mat_int) <- paste0('net_ep_', 1:10)
+
+tbl_wkcomp_ep <- cbind(
+  tbl_wkcomp_ep, mat_int
+)
+```
+
+```{r}
+formula_net_ep <- paste(
+  'incremental_paid ~ 0 +',
+  paste0('net_ep_', 1:10, collapse = ' + ')
+) |> 
+  as.formula()
+
+fit_ep_four <- lme(
+  fixed = formula_net_ep,
+  random = list(company = pdBlocked(list(
+    ~ 0 + net_ep_1, 
+    ~ 0 + net_ep_2, 
+    ~ 0 + net_ep_3, 
+    ~ 0 + net_ep_4, 
+    ~ 0 + net_ep_5, 
+    ~ 0 + net_ep_6, 
+    ~ 0 + net_ep_7, 
+    ~ 0 + net_ep_8, 
+    ~ 0 + net_ep_9, 
+    ~ 0 + net_ep_10
+    )) 
+  ),
+  data = tbl_wkcomp_ep
+)
+```
+
+```{r}
+beta_hat <- fixed.effects(fit_ep_four)
+
+standard_error <- fit_ep_four$varFix |> 
+  diag() |> 
+  sqrt()
+
+degrees_of_freedom <- fit_ep_four$fixDF$X
+crit <- qt(1 - alpha / 2, df = degrees_of_freedom)
+
+tbl_beta_hat_fit_ep_four <- tibble(
+  Coefficient = names(beta_hat),
+  Estimate = beta_hat,
+  `Degrees of Freedom` = degrees_of_freedom,
+  `Standard Error` = standard_error,
+  Lower = beta_hat - crit * standard_error,
+  Upper = beta_hat + crit * standard_error
+)
+```
+
+```{r}
+#| label: tbl-beta-hat-fit_ep_four
+#| tbl-cap: Estimated coefficients using prior cumulative and lag with a random effect intercept by company
+tbl_beta_hat_fit_ep_four |> 
+  knitr::kable(digits = 2)
+```
+
+# Conclusion
+
+For this data set we find that the use of covariates in addition to the lag provides a more reasonable estimate. In particular, the use of prior cumulative loss or the net earned premium appear to outperform a model which uses the lag alone. Additionally, treating the company as a random effect improves the fit. This is consistent with our understanding of the operation of insurance companies and the manner of regulation in the markets they serve.
+
+Future work could focus on the granularity of insurance company as a random effect. Using market knowledge, one could group companies in similar industries to reduce the number of random effect parameters. Alternately, one could explore factor analysis to identify latent groupings in the data we have.
+
+The data under examination exhibits significant amount of skew. A model type such a generalized linear mixed model may accommodate this better.
+
+# References
+
+::: {#refs}
+:::
+
+# Figures
+
+```{r include=FALSE}
+knitr::opts_chunk$set(
+  include = TRUE,
+  message = FALSE,
+  warning = FALSE
+)
+```
+
+```{r}
+#| label: fig-inc-paid-histogram
+#| fig-cap: "A histogram of incremental paid losses, which exhibits skew"
+```
+
+```{r}
+#| label: fig-inc-paid-histogram-logged
+#| fig-cap: "A histogram of incremental paid losses on a log scale, which shows a probability mass at zero"
+```
+
+```{r}
+#| label: fig-mean-paid-by-lag
+#| fig-cap: 'Mean incremental paid loss by development lag'
+```
+
+```{r}
+#| label: fig-sd-paid-by-lag
+#| fig-cap: 'Standard deviation of incremental paid loss by development lag'
+```
+
+```{r }
+#| label: fig-inc-by-prior
+#| fig-cap: 'Incremental paid losses against prior cumulative losses'
+```
+
+```{r}
+#| label: fig-inc-by-prior-facet
+#| fig-cap: 'Incremental paid losses against prior cumulative losses, by lag'
+```
+
+```{r}
+#| label: fig-beta-prior-four
+#| fig-cap: 'Estimate and confidence interval of beta estimates for prior model four'
+```
+
+```{r}
+#| label: fig-beta-prior-four-lag-9-10
+#| fig-cap: 'Estimate and confidence interval of beta estimates of lags 6 through 10 for prior model four'
+```
+
+# Tables
+
+```{r}
+#| label: tbl-sched-p-example
+#| tbl-cap: "A sample of the data being studied"
+```
+
+```{r}
+#| label: tbl-beta-hat-fit-lag-one
+#| tbl-cap: Estimated coefficients using lag as a predictor with variances different by company
+```
+
+```{r}
+#| label: tbl-beta-hat-fit-lag-two
+#| tbl-cap: Estimated coefficients using lag as a predictor with variances different by company and weighted by lag
+```
+
+```{r}
+#| label: tbl-beta-hat-fit-lag-three
+#| tbl-cap: Estimated coefficients using lag as a predictor with random effects for the slopes
+```
+
+```{r}
+#| label: tbl-beta-hat-fit-lag-four
+#| tbl-cap: Estimated coefficients using lag as a predictor with random effects for the slopes and intercept
+```
+
+```{r}
+#| label: tbl-aic-lag
+#| tbl-cap: AIC for models based on development lag
+```
+
+```{r}
+#| label: tbl-beta-hat-fit-prior-one
+#| tbl-cap: Estimated coefficients using prior cumulative as a predictor with variances different by company
+```
+
+```{r}
+#| label: tbl-aic-prior
+#| tbl-cap: AIC for models based on prior cumulative paid
+```
