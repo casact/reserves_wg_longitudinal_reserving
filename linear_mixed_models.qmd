@@ -2,11 +2,12 @@
 title: "A Longitudinal Approach to Loss Reserving"
 subtitle: ST 537
 author: Brian A. Fannin ACAS
+abstract: "Reserving methods like chain-ladder are inherently linear models. In application, they are often applied to one business segment or coverage item at a time. This misses an opportunity to incorporate exogeneous data to smooth estimates. This paper examines the use of linear mixed models for reserving."
 bibliography: references.bib
 format:
   docx:
     number-sections: true
-    reference-doc: word_template.docx
+    reference-doc: cas_rp_template.docx
 ---
 
 <!-- This Source Code Form is subject to the terms of the Mozilla Public
@@ -16,59 +17,77 @@ format:
 ```{r include=FALSE}
 knitr::opts_chunk$set(
   echo = FALSE,
-  include = FALSE
+  include = FALSE,
+  message = FALSE,
+  warning = FALSE
 )
 ```
 
-
 # Introduction
-
-## What is loss reserving?
-
-An insurance company takes on a financial obligation to a policyholder as soon as the policy is sold. However, although the premium is known with certainty, the amount owed for claims is not. Even after a claim occurs, the insurance company is still uncertain of the claim's ultimate cost. The amount associated with repairing a damaged car, the medical costs for someone injured in an accident, or the expenses to repair a damaged roof take time to become fully established. In some cases, this process may take years. For example, a plaintiff may seek recovery for a tort claim which will work its way through the civil courts and then --- in all likelihood --- be appealed after a jury has rendered a verdict. The resolution of asbestos cases --- which took decades and is still not fully resolved --- is an example. Finally, the existence of a claim may not be known for some period of time after a policy has expired. Again, asbestos liability provides a good case in point. Claimants who had been exposed to asbestos were unaware of the negative health affects for years. However, under prevailing civil liability law and the provisions of the insurance contract, they were still able to seek financial recovery and insurers were obligated to respond[^claims_made].
-
-[^claims_made]: The policy requirement that an insurance contract respond many years after policy expiry lead to the development of the "claims-made" coverage trigger in the late 1970s. In these contracts, the policy covers only those claims which are made during the policy period.
-
-Actuaries use statistical methods to estimate the amount of future payments to be made. This is typically done in alignment with a financial reporting period such as a year or quarter. The assignment of claims data to a period can take several forms. In one case, all claims associated with policies issued during a specific period are aggregated. In another, all claims which occurred --- irrespective of whether they are known to the policyholder or the insurance company --- are aggregated. For example, all claims which occur between January 1, 2000 and December 31, 2000 would be combined as one observational unit. This is known as an "accident year" or sometimes "occurrence year". The period from January through December just described would be referred to as "accident year 2000". 
-
-Accident years are evaluated at regular intervals, typically annually or quarterly and the evolution of financial amounts is commonly referred to as "loss development". The intervals are referred to as "development periods", or "lags". The date when figures are compiled is referred to as the "evaluation date". The period of time between the beginning of a collection of claims and the evaluation date is referred to as the "development age", or simply "age. For example, accident year 2000 evaluated at December 31, 2000 would constitute "development age one year". The same period evaluated at December 31, 2001 would be "development age two years" and so on.
-
-Several different amounts are recorded and analyzed by the actuary. Naturally, amounts paid to claimants or for expenses to settle a claim are recorded. In addition, an accident year will sum the estimates made by the claims adjuster for all known claims is recorded. Each adjuster makes an estimate of future costs for each case assigned to them. Accordingly, the sum of all such estimates is known as the "case reserve". Note that although this amount may increase as facts about the case become known, it is expected to decrease to zero as the case is settled and closed. The sum of paid amounts and case reserve is known as the "incurred loss" and sometimes the "reported loss". It constitutes all that is known about the claims associated with a particular time period.
-
-Although insurance companies do not know what funds are owed to policyholders at the inception of the policy, they do know what premium has been charged. The premium is an estimate of the average funds needed to cover losses and expenses. Because the largest share of expenses is proportionate to premium, the premium has a nearly direct linear relationship to the estimated loss. Given that, a linear function of premium is often used as an estimate of loss when case reserve and payment data has yet to emerge.
 
 ## Research objective
 
-In this paper, we will explore the use of longitudinal analysis to estimate loss payments for workers compensation insurance. We will examine several potential covariates: development lag, prior cumulative paid loss, and net earned premium. Additionally, we will explore several covariance structures and examine the use of random effects which are tied to insurance company. Because each insurance company has its own portfolio of insured and its own claims department we may expect both the character of the claims and the settlement of claims to be specific an insurer. However, because each insurance company is subject to similar regulation[^similar_regulation], we can also expect some similarities in behavior.
+_The initial paragraphs are a holdover from my final project. This explanation is probably too simple for an actuarial audience._
+
+An insurance company takes on a financial obligation to a policyholder as soon as a policy is sold. However, although the premium is known with certainty, the amount owed for claims is not. Even after a claim occurs, the insurance company is still uncertain of the claim's ultimate cost. The amount associated with repairing a damaged car, the medical costs for someone injured in an accident, or the expenses to repair a damaged roof take time to become fully established. In some cases, this process may take years. For example, a plaintiff may seek recovery for a tort claim which will work its way through the civil courts and then --- in all likelihood --- be appealed after a jury has rendered a verdict. The resolution of asbestos cases --- which took decades and is still not fully resolved --- is an example. Finally, the existence of a claim may not be known for some period of time after a policy has expired. Again, asbestos liability provides a good case in point. Claimants who had been exposed to asbestos were unaware of the negative health affects for years. However, under prevailing civil liability law and the provisions of the insurance contract, they were still able to seek financial recovery and insurers were obligated to respond[^claims_made].
+
+[^claims_made]: The policy requirement that an insurance contract respond many years after policy expiry lead to the development of the "claims-made" coverage trigger in the late 1970s. In these contracts, the policy covers only those claims which are made during the policy period.
+
+Although insurance companies do not know what funds are owed to policyholders at the inception of the policy, they do know what premium has been charged. The premium is an estimate of the average funds needed to cover losses and expenses. Because the largest share of expenses is proportionate to premium, the premium has a nearly direct linear relationship to the estimated loss. Given that, a linear function of premium is often used as an estimate of loss when case reserve and payment data has yet to emerge.
+
+_Here we get to the actuarial stuff_
+
+In this paper, we will explore the use of longitudinal analysis to estimate loss payments for workers compensation insurance. Before doing so, we will review existing some work, which examines linear modeling techniques for loss reserving. Additionally, we will look at how these models, and others, have been extended 
+
+We will examine several potential covariates: development lag, prior cumulative paid loss, and net earned premium. Additionally, we will explore several covariance structures and examine the use of random effects which are tied to insurance company. Because each insurance company has its own portfolio of insured and its own claims department we may expect both the character of the claims and the settlement of claims to be specific an insurer. However, because each insurance company is subject to similar regulation[^similar_regulation], we can also expect some similarities in behavior.
 
 [^similar_regulation]: In the United States, each state is responsible for the regulation of insurance. Insofar as insurance companies concentrate in particular states or geographic regions they may experience regulatory regimes that resemble the whole more or less.
 
 ```{r results='hide', message = FALSE}
+#| label: load-tidyverse
 library(tidyverse)
 ```
 
-## The data
+# Mathematical background
 
-Insurance companies in the United States are required to report financial statements to the National Association of Insurance Commissioners on an annual basis in a standard format. The report contains ten accident years with an evaluation date as of the end of the calendar year. Therefore, each accident year is at a different age of development. The most recent accident year will be age one and the oldest will be at development age ten. 
 
-Glenn Meyers and Peng Shi collated ten years of financial statements to generate a $10 x 10$ matrix of financial amounts, giving ten development ages for ten accident years. Values exist for each of 132 companies, making this a balanced design. The data is publicly available and has been captured in the `raw` R package. For this paper, we will augment the original data by noting the prior amounts for cumulative paid and case reserve and also by calculating incremental values for the paid data. A sample of the data is shown in @tbl-sched-p-example.
+
+## Literature review
+
+Start with the earliest Zehnwirth or Taylor paper? Then Mack, then Murphy. Circle back to Stanard and the responses to his paper. 
+
+Reference early works of linear mixed models. Cite a few textbooks: Frees, West/Welch, Gelman/Hill
+
+Guszcza mixed model paper
+
+Earliest reference to GLMs in reserving? Taylor/McGuire
+
+# The data
+
+We  Glenn Meyers and Peng Shi collated ten years of financial statements to generate a $10 x 10$ matrix of financial amounts, giving ten development ages for ten accident years. Values exist for each of 132 companies, making this a balanced design. The data is publicly available and has been captured in the `raw` R package. For this paper, we will augment the original data by noting the prior amounts for cumulative paid and case reserve and also by calculating incremental values for the paid data. A sample of the data is shown in @tbl-sched-p-example.
 
 In the data, the columns with a suffix of `_ep` refer to "earned premium" elements. The term "earned" means that it has been adjusted so that it is on the same accounting basis as the related losses - in this case accident year[^premium_earning]. Note that there are three different amounts shown. This reflects the usage of reinsurance: insurance bought by insurance companies. The `direct_ep` is the amount collected from policyholders, `ceded_ep` is the amount paid to reinsurers and `net_ep` is the difference between the two. Because the loss amounts reflect payments made by reinsurers, the `net_ep` column is the one which is most compatible with the observed losses.
 
-[^premium_earning]: A standard treatment is for premium to be earned linearly over the policy period, e.g. a policy effective July 1, 2000 for \$10,000 will have earned \$5,000 in accident year 2000 and \$5,000 in accident year 2001. There are exceptions to this, notably warranty insurance.
+_TO-DO: Add a cross-validation fold_
 
 ```{r }
+#| label: get-data
 library(raw)
 source('wrangle.R')
 
 tbl_wkcomp <- raw::wkcomp |> 
   group_by(Company) |> 
-  wrangle_triangle(1997)
+  wrangle_triangle(1997) |> 
+  mutate(
+    zero_paid_incremental = incremental_paid == 0,
+    zero_incurred_incremental = incremental_incurred == 0
+  )
 ```
 
 ```{r}
 #| label: tbl-sched-p-example
 #| tbl-cap: "A sample of the data being studied"
+#| include: TRUE
 tbl_wkcomp |> 
   slice_sample(n = 5) |> 
   select(Company = company, `Accident Year` = accident_year,
@@ -80,9 +99,12 @@ tbl_wkcomp |>
 
 ## Exploratory data analysis
 
+Before constructing models, we will first examine some exploratory and summary plots. Taking a look at the observed values in @fig-inc-paid-histogram and @fig-inc-paid-histogram-logged, we note two things. First, the response is highly skewed. Second, there is a probability mass at zero. The latter point will make it particularly challenging to fit using linear methods. 
+
 ```{r}
 #| label: fig-inc-paid-histogram
 #| fig-cap: "A histogram of incremental paid losses, which exhibits skew"
+#| include: TRUE
 tbl_wkcomp |> 
   ggplot(aes(incremental_paid)) + 
   geom_histogram() + 
@@ -93,29 +115,82 @@ tbl_wkcomp |>
 ```{r}
 #| label: fig-inc-paid-histogram-logged
 #| fig-cap: "A histogram of incremental paid losses on a log scale, which shows a probability mass at zero"
+#| include: TRUE
 tbl_wkcomp |> 
   ggplot(aes(incremental_paid)) + 
   geom_histogram() + 
-  labs(x = "Incremental Paid Loss") +
+  labs(x = "Log of Incremental Paid Loss") +
   scale_x_log10() +
   theme_minimal()
 ```
 
-Before constructing models, we will first examine some exploratory and summary plots. Taking a look at the observed values in @fig-inc-paid-histogram and @fig-inc-paid-histogram-logged, we note two things. First, the response is highly skewed. Second, there is a probability mass at zero. The latter point will make it particularly challenging to fit using linear methods. 
+_Do zero incremental payments depend on lag?_
+
+```{r}
+tbl_wkcomp |>
+  group_by(lag_factor) |> 
+  summarise(
+    zero_paid_incremental = sum(zero_paid_incremental)
+  ) |> 
+  ggplot(aes(lag_factor, zero_paid_incremental)) + 
+  geom_bar(stat = 'identity')
+```
+
+```{r}
+tbl_wkcomp |>
+  count(lag_factor, zero_paid_incremental) |> 
+  group_by(lag_factor) |> 
+  mutate(n_pct = n / sum(n)) |> 
+  filter(zero_paid_incremental) |> 
+  ggplot(aes(lag_factor, n_pct)) + 
+  geom_point() +
+  scale_y_continuous(limits = c(0,1)) +
+  theme_minimal()
+```
 
 ```{r}
 tbl_summary_lag <- tbl_wkcomp |> 
   group_by(lag) |> 
   summarise(
     paid_mean = mean(incremental_paid, na.rm = TRUE),
+    paid_median = median(incremental_paid, na.rm = TRUE),
+    paid_mean_log = mean(log(incremental_paid), na.rm = TRUE),
+    paid_median_log = median(log(incremental_paid), na.rm = TRUE),
     paid_sd = sd(incremental_paid, na.rm = TRUE),
     paid_cv = paid_sd / paid_mean
   )
 ```
 
 ```{r}
+tbl_summary_lag |> 
+  ggplot(aes(lag, paid_median_log)) + 
+  geom_point() + 
+  geom_line() + 
+  scale_x_continuous(breaks = 1:10) + 
+  labs(
+    x = 'Development Lag',
+    y = 'Mean log incremental paid loss'
+  ) + 
+  theme_minimal()
+```
+
+```{r}
+tbl_summary_lag |> 
+  ggplot(aes(lag, paid_median)) + 
+  geom_point() + 
+  geom_line() + 
+  scale_x_continuous(breaks = 1:10) + 
+  labs(
+    x = 'Development Lag',
+    y = 'Medan incremental paid loss'
+  ) + 
+  theme_minimal()
+```
+
+```{r}
 #| label: fig-mean-paid-by-lag
 #| fig-cap: 'Mean incremental paid loss by development lag'
+#| include: TRUE
 
 tbl_summary_lag |> 
   ggplot(aes(lag, paid_mean)) + 
@@ -129,9 +204,12 @@ tbl_summary_lag |>
   theme_minimal()
 ```
 
+We next turn to the mean and standard deviation of incremental payments, grouped by lag. In @fig-mean-paid-by-lag, we note that the average payment amount rises between lags 1 and 2, but then declines. This pattern is also observed in the standard deviation shown in @fig-sd-paid-by-lag.
+
 ```{r}
 #| label: fig-sd-paid-by-lag
 #| fig-cap: 'Standard deviation of incremental paid loss by development lag'
+#| include: TRUE
 
 tbl_summary_lag |> 
   ggplot(aes(lag, paid_sd)) + 
@@ -145,8 +223,6 @@ tbl_summary_lag |>
   theme_minimal()
 ```
 
-We next turn to the mean and standard deviation of incremental payments, grouped by lag. In @fig-mean-paid-by-lag, we note that the average payment amount rises between lags 1 and 2, but then declines. This pattern is also observed in the standard deviation shown in @fig-sd-paid-by-lag.
-
 ```{r}
 tbl_wkcomp_prior <- tbl_wkcomp |> 
   filter(lag != 1)
@@ -156,6 +232,7 @@ tbl_wkcomp_prior <- tbl_wkcomp |>
 ```{r }
 #| label: fig-inc-by-prior
 #| fig-cap: 'Incremental paid losses against prior cumulative losses'
+#| include: TRUE
 tbl_wkcomp_prior |> 
   ggplot(aes(prior_cumulative_paid, incremental_paid)) + 
   geom_point() + 
@@ -169,6 +246,7 @@ tbl_wkcomp_prior |>
 ```{r}
 #| label: fig-inc-by-prior-facet
 #| fig-cap: 'Incremental paid losses against prior cumulative losses, by lag'
+#| include: TRUE
 tbl_wkcomp_prior |> 
   ggplot(aes(prior_cumulative_paid, incremental_paid)) + 
   geom_point() + 
@@ -186,7 +264,7 @@ In actuarial practice, it is common to model payments on the prior cumulative va
 tbl_wkcomp_ep <- tbl_wkcomp
 ```
 
-```{r}
+```{r include=FALSE}
 tbl_wkcomp_ep |> 
   ggplot(aes(net_ep, incremental_paid)) + 
   geom_point() +
@@ -198,6 +276,7 @@ tbl_wkcomp_ep |>
 ```
 
 ```{r}
+#| include: false
 tbl_wkcomp_ep |> 
   ggplot(aes(net_ep, incremental_paid)) + 
   geom_point() + 
@@ -208,6 +287,10 @@ tbl_wkcomp_ep |>
   ) + 
   theme_minimal()
 ```
+
+Based on the exploratory analysis, we will explore the following models:
+
+* 
 
 # Methods
 
@@ -255,6 +338,7 @@ $$
 The vector $\pmb{D}$ will have an entry for each company.
 
 ```{r}
+#| label: gls-one
 library(nlme)
 
 fit_lag_one <- gls(
@@ -266,6 +350,7 @@ fit_lag_one <- gls(
 
 
 ```{r}
+#| label: club-sandwich
 library(clubSandwich)
 
 beta_hat <- fit_lag_one$coefficients
@@ -289,6 +374,7 @@ tbl_beta_hat_fit_lag_one <- tibble(
 ```{r}
 #| label: tbl-beta-hat-fit-lag-one
 #| tbl-cap: Estimated coefficients using lag as a predictor with variances different by company
+#| include: true
 tbl_beta_hat_fit_lag_one |> 
   knitr::kable(digits = 2)
 ```
@@ -298,6 +384,7 @@ Our parameter estimates are shown in @tbl-beta-hat-fit-lag-one, which includes a
 Our second model assumes that the variance changes by development lag. This is motivated by @fig-sd-paid-by-lag.
 
 ```{r }
+#| label: fit-lag-two
 #| cache: true
 fit_lag_two <- gls(
   incremental_paid ~ 0 + delta_ind + lag_le2 + lag_gt2,
@@ -329,6 +416,7 @@ tbl_beta_hat_fit_lag_two <- tibble(
 ```{r}
 #| label: tbl-beta-hat-fit-lag-two
 #| tbl-cap: Estimated coefficients using lag as a predictor with variances different by company and weighted by lag
+#| include: TRUE
 tbl_beta_hat_fit_lag_two |> 
   knitr::kable(digits = 2)
 ```
@@ -336,6 +424,7 @@ tbl_beta_hat_fit_lag_two |>
 Examining @tbl-beta-hat-fit-lag-two, we see that the model gives a negative value for the slope for lags <= 2. In addition, the confidence intervals for the coefficient estimates associated with lags <= 2 include zero, indicating that they we cannot readily conclude that their values are not zero.
 
 ```{r }
+#| label: fit-lag-three
 fit_lag_three <- lme(
   fixed = incremental_paid ~ 0 + delta_ind + lag_le2 + lag_gt2,
   random = list(company = pdBlocked(
@@ -369,6 +458,7 @@ tbl_beta_hat_fit_lag_three <- tibble(
 ```{r}
 #| label: tbl-beta-hat-fit-lag-three
 #| tbl-cap: Estimated coefficients using lag as a predictor with random effects for the slopes
+#| include: TRUE
 tbl_beta_hat_fit_lag_three |> 
   knitr::kable(digits = 2)
 ```
@@ -376,6 +466,7 @@ tbl_beta_hat_fit_lag_three |>
 We now examine a random effects model, using insurance company as the grouping element for the random effects. @tbl-beta-hat-fit-lag-three shows estimates for the fixed effects. The slope for lag <= 2 has an estimated standard error nearly equal to the coefficient itself, indicating this parameter is likely not significant.
 
 ```{r}
+#| label: fit-lag-four
 fit_lag_four <- lme(
   fixed = incremental_paid ~ 0 + delta_ind + lag_le2 + lag_gt2,
   random = list(company = pdBlocked(
@@ -409,6 +500,7 @@ tbl_beta_hat_fit_lag_four <- tibble(
 ```{r}
 #| label: tbl-beta-hat-fit-lag-four
 #| tbl-cap: Estimated coefficients using lag as a predictor with random effects for the slopes and intercept
+#| include: TRUE
 tbl_beta_hat_fit_lag_four |> 
   knitr::kable(digits = 2)
 ```
@@ -434,6 +526,7 @@ tbl_aic_lag <- tibble(
 ```{r}
 #| label: tbl-aic-lag
 #| tbl-cap: AIC for models based on development lag
+#| include: TRUE
 
 tbl_aic_lag |> 
   knitr::kable(format.args = list(big.mark = ",", nsmall = 0))
@@ -464,6 +557,7 @@ $$ {#eq-prior-one}
 Our first example will use an intercept and make no distinction by lag. This is analogous to the first model using lag as a predictor.
 
 ```{r}
+#| label: fit-prior-one
 fit_prior_one <- gls(
   incremental_paid ~ 1 + prior_cumulative_paid,
   data = tbl_wkcomp_prior,
@@ -491,6 +585,7 @@ tbl_beta_hat_fit_prior_one <- tibble(
 ```{r}
 #| label: tbl-beta-hat-fit-prior-one
 #| tbl-cap: Estimated coefficients using prior cumulative as a predictor with variances different by company
+#| include: TRUE
 tbl_beta_hat_fit_prior_one |> 
   knitr::kable(digits = 2)
 ```
@@ -536,6 +631,7 @@ tbl_beta_hat_fit_prior_two <- tibble(
 ```{r}
 #| label: tbl-beta-hat-fit_prior_two
 #| tbl-cap: Estimated coefficients using prior cumulative and lag
+#| include: TRUE
 tbl_beta_hat_fit_prior_two |> 
   knitr::kable(digits = 2)
 ```
@@ -573,6 +669,7 @@ tbl_beta_hat_fit_prior_three <- tibble(
 ```{r}
 #| label: tbl-beta-hat-fit_prior_three
 #| tbl-cap: Estimated coefficients using prior cumulative and lag with a random effect intercept by company
+#| include: TRUE
 tbl_beta_hat_fit_prior_three |> 
   knitr::kable(digits = 2)
 ```
@@ -659,6 +756,7 @@ tbl_beta_hat_fit_prior_four <- tibble(
 ```{r}
 #| label: tbl-beta-hat-fit_prior_four
 #| tbl-cap: Estimated coefficients using prior cumulative and lag with a random effect intercept by company
+#| include: TRUE
 tbl_beta_hat_fit_prior_four |> 
   knitr::kable(digits = 2)
 ```
@@ -684,6 +782,7 @@ tbl_aic_prior <- tibble(
 ```{r}
 #| label: tbl-aic-prior
 #| tbl-cap: AIC for models based on prior cumulative paid
+#| include: TRUE
 tbl_aic_prior |> 
   knitr::kable(format.args = list(big.mark = ",", nsmall = 0))
 ```
@@ -693,6 +792,7 @@ As shown in @tbl-aic-prior, the final model with random effects for slope has th
 ```{r}
 #| label: fig-beta-prior-four
 #| fig-cap: 'Estimate and confidence interval of beta estimates for prior model four'
+#| include: TRUE
 tbl_beta_hat_fit_prior_four |> 
   mutate(
     Coefficient = Coefficient |> fct_relevel('prior_10', after = Inf)
@@ -705,6 +805,7 @@ tbl_beta_hat_fit_prior_four |>
 ```{r}
 #| label: fig-beta-prior-four-lag-9-10
 #| fig-cap: 'Estimate and confidence interval of beta estimates of lags 6 through 10 for prior model four'
+#| include: TRUE
 tbl_beta_hat_fit_prior_four |> 
   filter(Coefficient %in% paste0('prior_', c(6:10))) |> 
   mutate(
@@ -818,6 +919,7 @@ tbl_beta_hat_fit_ep_four <- tibble(
 ```{r}
 #| label: tbl-beta-hat-fit_ep_four
 #| tbl-cap: Estimated coefficients using prior cumulative and lag with a random effect intercept by company
+#| include: TRUE
 tbl_beta_hat_fit_ep_four |> 
   knitr::kable(digits = 2)
 ```
@@ -834,95 +936,3 @@ The data under examination exhibits significant amount of skew. A model type suc
 
 ::: {#refs}
 :::
-
-# Figures
-
-```{r include=FALSE}
-knitr::opts_chunk$set(
-  include = TRUE,
-  message = FALSE,
-  warning = FALSE
-)
-```
-
-```{r}
-#| label: fig-inc-paid-histogram
-#| fig-cap: "A histogram of incremental paid losses, which exhibits skew"
-```
-
-```{r}
-#| label: fig-inc-paid-histogram-logged
-#| fig-cap: "A histogram of incremental paid losses on a log scale, which shows a probability mass at zero"
-```
-
-```{r}
-#| label: fig-mean-paid-by-lag
-#| fig-cap: 'Mean incremental paid loss by development lag'
-```
-
-```{r}
-#| label: fig-sd-paid-by-lag
-#| fig-cap: 'Standard deviation of incremental paid loss by development lag'
-```
-
-```{r }
-#| label: fig-inc-by-prior
-#| fig-cap: 'Incremental paid losses against prior cumulative losses'
-```
-
-```{r}
-#| label: fig-inc-by-prior-facet
-#| fig-cap: 'Incremental paid losses against prior cumulative losses, by lag'
-```
-
-```{r}
-#| label: fig-beta-prior-four
-#| fig-cap: 'Estimate and confidence interval of beta estimates for prior model four'
-```
-
-```{r}
-#| label: fig-beta-prior-four-lag-9-10
-#| fig-cap: 'Estimate and confidence interval of beta estimates of lags 6 through 10 for prior model four'
-```
-
-# Tables
-
-```{r}
-#| label: tbl-sched-p-example
-#| tbl-cap: "A sample of the data being studied"
-```
-
-```{r}
-#| label: tbl-beta-hat-fit-lag-one
-#| tbl-cap: Estimated coefficients using lag as a predictor with variances different by company
-```
-
-```{r}
-#| label: tbl-beta-hat-fit-lag-two
-#| tbl-cap: Estimated coefficients using lag as a predictor with variances different by company and weighted by lag
-```
-
-```{r}
-#| label: tbl-beta-hat-fit-lag-three
-#| tbl-cap: Estimated coefficients using lag as a predictor with random effects for the slopes
-```
-
-```{r}
-#| label: tbl-beta-hat-fit-lag-four
-#| tbl-cap: Estimated coefficients using lag as a predictor with random effects for the slopes and intercept
-```
-
-```{r}
-#| label: tbl-aic-lag
-#| tbl-cap: AIC for models based on development lag
-```
-
-```{r}
-#| label: tbl-beta-hat-fit-prior-one
-#| tbl-cap: Estimated coefficients using prior cumulative as a predictor with variances different by company
-```
-
-```{r}
-#| label: tbl-aic-prior
-#| tbl-cap: AIC for models based on prior cumulative paid
-```
