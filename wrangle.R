@@ -4,7 +4,7 @@
 
 adjust_lags <- function(tbl_in, max_lag){
   
-  other_lags <- tbl_in$lag[tbl_in$lag >= max_lag]
+  other_lags <- as.character(tbl_in$lag[tbl_in$lag >= max_lag])
   
   tbl_in |> 
     mutate(
